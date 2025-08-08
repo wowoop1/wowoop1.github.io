@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trading Ledger</title>
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+    <!-- Theme Color for PWA -->
+    <meta name="theme-color" content="#0a0a0a"/>
+    <!-- PWA Icons -->
+    <link rel="apple-touch-icon" href="https://placehold.co/192x192/0a0a0a/FFFFFF/png?text=Ledger">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS (XLSX) library for Excel import/export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        /* Custom Styles */
+        @import url('https://rsms.me/inter/inter.css');
+        html { font-family: 'Inter', sans-serif; }
+        @supports (font-variation-settings: normal) {
+            html { font-family: 'Inter var', sans-serif; }
+        }
+
+        body {
+            background-color: #0a0a0a;
+        }
+        .view {
+            display: none;
+        }
+        .view.active {
+            display: block;
+        }
+        .modal {
+            display: none;
+            transition: opacity 0.3s ease;
+        }
+        .modal.active {
+            display: flex;
+        }
+        .modal-content {
+            transition: transform 0.3s ease;
+        }
+        .modal.active .modal-content {
+            transform: scale(1);
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1f2937; }
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+        
+        /* Custom input style for date picker icon */
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            filter: invert(0.8);
+        }
+
+        /* Hide arrows from number inputs */
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type=number] {
+            -moz-appearance: textfield;
+        }
+    </style>
+</head>
+<body class="bg-black text-gray-200">
+
+    <!-- Main Container -->
+    <div class="container mx-auto max-w-3xl p-4 pb-28">
+
+        <!-- Header -->
+        <header class="text-center my-8">
+            <h1 class="text-4xl sm:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">Trading Ledger</h1>
+            <p class="text-gray-500 mt-2">Your Personal Trading Journal</p>
+        </header>
+
+        <!-- Navigation -->
+        <nav class="flex justify-center bg-gray-900/50 backdrop-blur-sm rounded-xl p-1 mb-8 sticky top-4 z-40 border border-gray-800">
+            <button id="nav-active" class="nav-button flex-1 py-2.5 px-4 rounded-lg font-bold transition-all text-white bg-emerald-500 shadow-lg">Active Trades</button>
+            <button id="nav-historic" class="nav-button flex-1 py-2.5 px-4 rounded-lg font-bold transition-all text-gray-400">Historic Trades</button>
+        </nav>
+
+        <!-- Views -->
+        <main>
+            <!-- Active Trades View -->
+            <div id="active-trades-view" class="view active">
+                 <div id="total-notional-pl-card" class="bg-gray-900 border border-gray-800 p-6 rounded-2xl mb-6 text-center shadow-2xl">
+                    <h2 class="text-lg text-gray-400 font-semibold flex items-center justify-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.414-1.414L11 10.586V6z" clip-rule="evenodd" /></svg>
+                        Total Notional P/L
+                    </h2>
+                    <p id="total-notional-pl-value" class="text-5xl font-bold mt-2">₹0.00</p>
+                </div>
+                <div id="active-trades-list" class="space-y-4">
+                    <!-- Active trades will be injected here by JS -->
+                </div>
+            </div>
+
+            <!-- Historic Trades View -->
+            <div id="historic-trades-view" class="view">
+                <div id="total-pl-card" class="bg-gray-900 border border-gray-800 p-6 rounded-2xl mb-6 text-center shadow-2xl">
+                    <h2 class="text-lg text-gray-400 font-semibold flex items-center justify-center gap-2">
+                       <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd" /></svg>
+                        Total Realized P/L
+                    </h2>
+                    <p id="total-pl-value" class="text-5xl font-bold mt-2">₹0.00</p>
+                </div>
+                <div class="flex justify-end items-center gap-4 mb-4">
+                    <div class="relative flex items-center gap-2">
+                        <button id="import-btn" class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-all"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>Import</button>
+                        <svg id="info-icon" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-500 cursor-pointer hover:text-cyan-400 transition-colors" viewBox="0 0 20 20" fill="currentColor">
+                          <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+                        </svg>
+                        <div id="info-tooltip" class="hidden absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-72 bg-gray-900 border border-gray-700 text-gray-300 text-xs rounded-lg p-3 shadow-lg z-50">
+                            <h4 class="font-bold mb-1 text-white">Excel Import Format</h4>
+                            <p class="mb-2">Ensure your .xlsx file has these exact column headers:</p>
+                            <ul class="list-disc list-inside space-y-1 font-mono">
+                                <li>symbol</li>
+                                <li>purchasePrice</li>
+                                <li>quantity</li>
+                                <li>purchaseDate</li>
+                                <li>tradeType</li>
+                                <li>salePrice</li>
+                                <li>saleDate</li>
+                                <li>profitLoss</li>
+                            </ul>
+                            <div class="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-x-8 border-x-transparent border-t-8 border-t-gray-700"></div>
+                        </div>
+                    </div>
+                    <button id="export-btn" class="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition-all"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>Export</button>
+                    <input type="file" id="import-file-input" class="hidden" accept=".xlsx, .xls">
+                </div>
+                <div id="historic-trades-list" class="space-y-4">
+                    <!-- Historic trades will be injected here by JS -->
+                </div>
+            </div>
+        </main>
+
+    </div>
+
+    <!-- Floating Action Button -->
+    <button id="fab-add-trade" class="fixed bottom-6 right-6 bg-gradient-to-tr from-emerald-500 to-cyan-500 text-white w-16 h-16 rounded-full flex items-center justify-center text-4xl shadow-2xl shadow-emerald-500/30 transition-transform hover:scale-110">
+        +
+    </button>
+
+    <!-- Modals -->
+    <div id="add-trade-modal" class="modal fixed inset-0 bg-black bg-opacity-80 items-center justify-center p-4 z-50">
+        <div class="modal-content bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-md shadow-2xl transform scale-95">
+            <h2 class="text-2xl font-bold mb-6">Add New Trade</h2>
+            <div class="space-y-4">
+                <input id="add-symbol" type="text" placeholder="Symbol (e.g., RELIANCE)" class="w-full bg-gray-800 p-3 rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                <input id="add-price" type="number" placeholder="Purchase Price" class="w-full bg-gray-800 p-3 rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                <input id="add-quantity" type="number" placeholder="Quantity" class="w-full bg-gray-800 p-3 rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                <div>
+                    <label class="text-sm text-gray-400">Purchase Date</label>
+                    <input id="add-date" type="date" class="w-full bg-gray-800 p-3 rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                </div>
+                <div class="flex gap-4">
+                    <button id="add-type-buy" class="trade-type-button flex-1 py-3 rounded-lg font-semibold transition-colors bg-emerald-500 border-2 border-emerald-500">BUY</button>
+                    <button id="add-type-sell" class="trade-type-button flex-1 py-3 rounded-lg font-semibold transition-colors bg-transparent border-2 border-gray-700">SELL (SHORT)</button>
+                </div>
+            </div>
+            <div class="flex gap-4 mt-6">
+                <button id="add-confirm" class="flex-1 bg-emerald-500 hover:bg-emerald-600 py-3 rounded-lg font-semibold transition-colors">Add Trade</button>
+                <button id="add-cancel" class="flex-1 bg-gray-700 hover:bg-gray-600 py-3 rounded-lg font-semibold transition-colors">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="conclude-trade-modal" class="modal fixed inset-0 bg-black bg-opacity-80 items-center justify-center p-4 z-50">
+        <div class="modal-content bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-md shadow-2xl transform scale-95">
+            <h2 class="text-2xl font-bold mb-6">Conclude Trade: <span id="conclude-symbol"></span></h2>
+            <div class="space-y-4">
+                <input id="conclude-price" type="number" placeholder="Enter Sale Price" class="w-full bg-gray-800 p-3 rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500">
+                 <div>
+                    <label class="text-sm text-gray-400">Sale Date</label>
+                    <input id="conclude-date" type="date" class="w-full bg-gray-800 p-3 rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500">
+                </div>
+            </div>
+            <div class="flex gap-4 mt-6">
+                <button id="conclude-confirm" class="flex-1 bg-red-500 hover:bg-red-600 py-3 rounded-lg font-semibold transition-colors">Confirm</button>
+                <button id="conclude-cancel" class="flex-1 bg-gray-700 hover:bg-gray-600 py-3 rounded-lg font-semibold transition-colors">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="edit-trade-modal" class="modal fixed inset-0 bg-black bg-opacity-80 items-center justify-center p-4 z-50">
+        <div class="modal-content bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-md shadow-2xl transform scale-95">
+            <h2 class="text-2xl font-bold mb-6">Edit Trade: <span id="edit-symbol"></span></h2>
+             <div class="space-y-4">
+                <label class="text-sm text-gray-400">Purchase Date</label>
+                <input id="edit-purchase-date" type="date" class="w-full bg-gray-800 p-3 rounded-lg border border-gray-700">
+                <label class="text-sm text-gray-400">Purchase Price</label>
+                <input id="edit-price" type="number" class="w-full bg-gray-800 p-3 rounded-lg border border-gray-700">
+                <label class="text-sm text-gray-400">Quantity</label>
+                <input id="edit-quantity" type="number" class="w-full bg-gray-800 p-3 rounded-lg border border-gray-700">
+                <label class="text-sm text-gray-400">Sale Date</label>
+                <input id="edit-sale-date" type="date" class="w-full bg-gray-800 p-3 rounded-lg border border-gray-700">
+                <label class="text-sm text-gray-400">Sale Price</label>
+                <input id="edit-sale-price" type="number" class="w-full bg-gray-800 p-3 rounded-lg border border-gray-700">
+            </div>
+            <div class="flex gap-4 mt-6">
+                <button id="edit-confirm" class="flex-1 bg-yellow-500 hover:bg-yellow-600 py-3 rounded-lg font-semibold transition-colors">Save Changes</button>
+                <button id="edit-cancel" class="flex-1 bg-gray-700 hover:bg-gray-600 py-3 rounded-lg font-semibold transition-colors">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- This script tag is for the main application logic -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- STATE MANAGEMENT ---
+            let activeTrades = [];
+            let historicTrades = [];
+            let currentView = 'active';
+            let tradeType = 'buy';
+            let selectedTradeId = null;
+
+            // --- DOM ELEMENTS ---
+            const navActiveBtn = document.getElementById('nav-active');
+            const navHistoricBtn = document.getElementById('nav-historic');
+            const activeView = document.getElementById('active-trades-view');
+            const historicView = document.getElementById('historic-trades-view');
+            const activeTradesList = document.getElementById('active-trades-list');
+            const historicTradesList = document.getElementById('historic-trades-list');
+            const totalPlValue = document.getElementById('total-pl-value');
+            const totalNotionalPlValue = document.getElementById('total-notional-pl-value');
+            const importBtn = document.getElementById('import-btn');
+            const exportBtn = document.getElementById('export-btn');
+            const importFileInput = document.getElementById('import-file-input');
+            const infoIcon = document.getElementById('info-icon');
+            const infoTooltip = document.getElementById('info-tooltip');
+
+
+            // Modals
+            const fab = document.getElementById('fab-add-trade');
+            const addTradeModal = document.getElementById('add-trade-modal');
+            const concludeTradeModal = document.getElementById('conclude-trade-modal');
+            const editTradeModal = document.getElementById('edit-trade-modal');
+
+            // Add Trade Modal
+            const addSymbolInput = document.getElementById('add-symbol');
+            const addPriceInput = document.getElementById('add-price');
+            const addQuantityInput = document.getElementById('add-quantity');
+            const addDateInput = document.getElementById('add-date');
+            const addTypeBuyBtn = document.getElementById('add-type-buy');
+            const addTypeSellBtn = document.getElementById('add-type-sell');
+            const addConfirmBtn = document.getElementById('add-confirm');
+            const addCancelBtn = document.getElementById('add-cancel');
+
+            // Conclude Trade Modal
+            const concludeSymbolSpan = document.getElementById('conclude-symbol');
+            const concludePriceInput = document.getElementById('conclude-price');
+            const concludeDateInput = document.getElementById('conclude-date');
+            const concludeConfirmBtn = document.getElementById('conclude-confirm');
+            const concludeCancelBtn = document.getElementById('conclude-cancel');
+
+            // Edit Trade Modal
+            const editSymbolSpan = document.getElementById('edit-symbol');
+            const editPurchaseDateInput = document.getElementById('edit-purchase-date');
+            const editPriceInput = document.getElementById('edit-price');
+            const editQuantityInput = document.getElementById('edit-quantity');
+            const editSaleDateInput = document.getElementById('edit-sale-date');
+            const editSalePriceInput = document.getElementById('edit-sale-price');
+            const editConfirmBtn = document.getElementById('edit-confirm');
+            const editCancelBtn = document.getElementById('edit-cancel');
+
+            // --- HELPER FUNCTIONS ---
+            const formatDate = (dateString) => {
+                if (!dateString) return 'N/A';
+                const date = new Date(dateString);
+                const userTimezoneOffset = date.getTimezoneOffset() * 60000;
+                return new Date(date.getTime() + userTimezoneOffset).toLocaleDateString('en-IN');
+            };
+
+            const toInputDate = (dateString) => {
+                if (!dateString) return '';
+                const date = new Date(dateString);
+                return date.toISOString().split('T')[0];
+            };
+            
+            const formatIndianCurrency = (amount) => {
+                const value = parseFloat(amount);
+                if (isNaN(value)) return '₹0.00';
+                
+                const colorClass = value >= 0 ? 'text-emerald-400' : 'text-red-400';
+                const sign = value < 0 ? '-' : '';
+                
+                let valueStr = Math.abs(value).toFixed(2);
+                let [integerPart, decimalPart] = valueStr.split('.');
+                
+                const lastThree = integerPart.length > 3 ? integerPart.substring(integerPart.length - 3) : integerPart;
+                const otherNumbers = integerPart.length > 3 ? integerPart.substring(0, integerPart.length - 3) : '';
+                const formattedInteger = otherNumbers.replace(/\B(?=(\d{2})+(?!\d))/g, ",") + (otherNumbers ? ',' : '') + lastThree;
+
+                return `<span class="${colorClass}">${sign}₹${formattedInteger}.${decimalPart}</span>`;
+            };
+            
+            const calculatePL = (purchasePrice, salePrice, quantity, tradeType) => {
+                 return (tradeType === 'buy')
+                    ? (salePrice - purchasePrice) * quantity
+                    : (purchasePrice - salePrice) * quantity;
+            };
+
+            // --- DATA PERSISTENCE ---
+            const loadData = () => {
+                activeTrades = JSON.parse(localStorage.getItem('activeTradesV4')) || [];
+                historicTrades = JSON.parse(localStorage.getItem('historicTradesV4')) || [];
+            };
+
+            const saveData = () => {
+                localStorage.setItem('activeTradesV4', JSON.stringify(activeTrades));
+                localStorage.setItem('historicTradesV4', JSON.stringify(historicTrades));
+            };
+
+            // --- RENDER FUNCTIONS ---
+            const render = () => {
+                renderActiveTrades();
+                renderHistoricTrades();
+                updateTotalPL();
+                updateNav();
+                updateTotalNotionalPL();
+            };
+
+            const renderActiveTrades = () => {
+                if (activeTrades.length === 0) {
+                    activeTradesList.innerHTML = `<div class="text-center text-gray-500 py-16"><p class="font-bold">No active trades.</p><p>Click the '+' button to add a new trade.</p></div>`;
+                    return;
+                }
+                activeTradesList.innerHTML = activeTrades.map(trade => `
+                    <div class="bg-gray-900 border border-gray-800 p-4 rounded-2xl shadow-lg space-y-3">
+                        <div class="flex justify-between items-center">
+                            <h3 class="text-xl font-bold text-white">${trade.symbol}</h3>
+                            <span class="font-bold text-sm px-2 py-1 rounded-md ${trade.tradeType === 'buy' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}">${trade.tradeType.toUpperCase()}</span>
+                        </div>
+                        <div class="grid grid-cols-3 gap-x-4 text-gray-400 text-sm">
+                            <span>Qty: <span class="font-semibold text-gray-300">${trade.quantity}</span></span>
+                            <span class="truncate">Entry: <span class="font-semibold text-gray-300">₹${trade.purchasePrice.toFixed(2)}</span></span>
+                            <span>Date: <span class="font-semibold text-gray-300">${formatDate(trade.purchaseDate)}</span></span>
+                        </div>
+                        <div class="pt-3 border-t border-gray-800 space-y-2">
+                            <div class="flex items-center gap-2">
+                                <input type="number" class="notional-price-input w-full bg-gray-800 p-2 rounded-lg text-sm border border-gray-700" placeholder="Notional Exit Price" data-id="${trade.id}">
+                                <button class="conclude-btn bg-red-600 hover:bg-red-700 text-sm font-semibold py-2 px-4 rounded-lg transition-colors" data-id="${trade.id}">Conclude</button>
+                            </div>
+                            <div class="individual-notional-pl text-center font-bold h-6" data-id="${trade.id}"></div>
+                        </div>
+                    </div>
+                `).join('');
+            };
+
+            const renderHistoricTrades = () => {
+                if (historicTrades.length === 0) {
+                    historicTradesList.innerHTML = `<div class="text-center text-gray-500 py-16"><p class="font-bold">No historic trades.</p><p>Import from Excel or conclude an active trade.</p></div>`;
+                    return;
+                }
+                historicTradesList.innerHTML = historicTrades.map(trade => `
+                    <div class="bg-gray-900 border border-gray-800 p-4 rounded-2xl shadow-lg">
+                        <div class="flex justify-between items-center mb-3">
+                            <h3 class="text-xl font-bold text-white">${trade.symbol}</h3>
+                            <span class="font-bold">P/L: ${formatIndianCurrency(trade.profitLoss)}</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-gray-400 text-sm mb-4">
+                            <span>Qty: <span class="font-semibold text-gray-300">${trade.quantity}</span></span>
+                            <span class="${trade.tradeType === 'buy' ? 'text-emerald-400' : 'text-red-400'}">Type: ${trade.tradeType.toUpperCase()}</span>
+                            <span>Entry Price: <span class="font-semibold text-gray-300">₹${trade.purchasePrice.toFixed(2)}</span></span>
+                            <span>Exit Price: <span class="font-semibold text-gray-300">₹${trade.salePrice.toFixed(2)}</span></span>
+                            <span>Entry Date: <span class="font-semibold text-gray-300">${formatDate(trade.purchaseDate)}</span></span>
+                            <span>Exit Date: <span class="font-semibold text-gray-300">${formatDate(trade.saleDate)}</span></span>
+                        </div>
+                        <div class="flex gap-2 justify-end pt-3 border-t border-gray-800">
+                            <button class="edit-btn bg-yellow-600 hover:bg-yellow-700 text-white text-xs font-bold py-2 px-3 rounded-lg" data-id="${trade.id}">EDIT</button>
+                            <button class="delete-btn bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold py-2 px-3 rounded-lg" data-id="${trade.id}">DELETE</button>
+                        </div>
+                    </div>
+                `).join('');
+            };
+            
+            const updateTotalPL = () => {
+                const total = historicTrades.reduce((acc, trade) => acc + trade.profitLoss, 0);
+                totalPlValue.innerHTML = formatIndianCurrency(total);
+            };
+            
+            const updateTotalNotionalPL = () => {
+                let total = 0;
+                document.querySelectorAll('.individual-notional-pl').forEach(el => {
+                    const value = parseFloat(el.dataset.value || 0);
+                    total += value;
+                });
+                totalNotionalPlValue.innerHTML = formatIndianCurrency(total);
+            };
+
+            const updateNav = () => {
+                if (currentView === 'active') {
+                    navActiveBtn.classList.add('bg-emerald-500', 'text-white', 'shadow-lg');
+                    navActiveBtn.classList.remove('text-gray-400');
+                    navHistoricBtn.classList.remove('bg-emerald-500', 'text-white', 'shadow-lg');
+                    navHistoricBtn.classList.add('text-gray-400');
+                    activeView.classList.add('active');
+                    historicView.classList.remove('active');
+                } else {
+                    navHistoricBtn.classList.add('bg-emerald-500', 'text-white', 'shadow-lg');
+                    navHistoricBtn.classList.remove('text-gray-400');
+                    navActiveBtn.classList.remove('bg-emerald-500', 'text-white', 'shadow-lg');
+                    navActiveBtn.classList.add('text-gray-400');
+                    historicView.classList.add('active');
+                    activeView.classList.remove('active');
+                }
+            };
+            
+            // --- MODAL LOGIC ---
+            const openModal = (modal) => {
+                modal.classList.add('active');
+                setTimeout(() => modal.querySelector('.modal-content').classList.add('scale-100'), 10);
+            };
+            const closeModal = (modal) => {
+                modal.querySelector('.modal-content').classList.remove('scale-100');
+                setTimeout(() => modal.classList.remove('active'), 300);
+            };
+
+            // --- EVENT LISTENERS ---
+            navActiveBtn.addEventListener('click', () => { currentView = 'active'; updateNav(); });
+            navHistoricBtn.addEventListener('click', () => { currentView = 'historic'; updateNav(); });
+            
+            fab.addEventListener('click', () => {
+                addDateInput.value = toInputDate(new Date());
+                openModal(addTradeModal);
+            });
+            addCancelBtn.addEventListener('click', () => closeModal(addTradeModal));
+            concludeCancelBtn.addEventListener('click', () => closeModal(concludeTradeModal));
+            editCancelBtn.addEventListener('click', () => closeModal(editTradeModal));
+
+            // Add Trade Logic
+            addTypeBuyBtn.addEventListener('click', () => {
+                tradeType = 'buy';
+                addTypeBuyBtn.classList.replace('bg-transparent', 'bg-emerald-500');
+                addTypeBuyBtn.classList.replace('border-gray-700', 'border-emerald-500');
+                addTypeSellBtn.classList.replace('bg-emerald-500', 'bg-transparent');
+                addTypeSellBtn.classList.replace('border-emerald-500', 'border-gray-700');
+            });
+            addTypeSellBtn.addEventListener('click', () => {
+                tradeType = 'sell';
+                addTypeSellBtn.classList.replace('bg-transparent', 'bg-emerald-500');
+                addTypeSellBtn.classList.replace('border-gray-700', 'border-emerald-500');
+                addTypeBuyBtn.classList.replace('bg-emerald-500', 'bg-transparent');
+                addTypeBuyBtn.classList.replace('border-emerald-500', 'border-gray-700');
+            });
+            addConfirmBtn.addEventListener('click', () => {
+                const symbol = addSymbolInput.value.toUpperCase();
+                const price = parseFloat(addPriceInput.value);
+                const quantity = parseInt(addQuantityInput.value);
+                const date = addDateInput.value;
+
+                if (!symbol || !price || !quantity || !date) { alert('Please fill all fields correctly.'); return; }
+                
+                const adjustedPrice = price * 1.01; // Add 1% cost
+
+                activeTrades.push({ id: `id_${Date.now()}`, symbol, purchasePrice: adjustedPrice, quantity, purchaseDate: date, tradeType });
+                
+                addSymbolInput.value = ''; addPriceInput.value = ''; addQuantityInput.value = '';
+                saveData(); render(); closeModal(addTradeModal);
+            });
+
+            // --- Dynamic Logic (using event delegation) ---
+            document.body.addEventListener('click', (e) => {
+                const target = e.target;
+                if (target.classList.contains('conclude-btn')) {
+                    selectedTradeId = target.dataset.id;
+                    const trade = activeTrades.find(t => t.id === selectedTradeId);
+                    concludeSymbolSpan.textContent = trade.symbol;
+                    concludePriceInput.value = '';
+                    concludeDateInput.value = toInputDate(new Date());
+                    openModal(concludeTradeModal);
+                }
+                if (target.classList.contains('delete-btn')) {
+                    if (confirm('Are you sure you want to delete this trade? This cannot be undone.')) {
+                        historicTrades = historicTrades.filter(t => t.id !== target.dataset.id);
+                        saveData(); render();
+                    }
+                }
+                if (target.classList.contains('edit-btn')) {
+                    selectedTradeId = target.dataset.id;
+                    const trade = historicTrades.find(t => t.id === selectedTradeId);
+                    editSymbolSpan.textContent = trade.symbol;
+                    editPurchaseDateInput.value = toInputDate(trade.purchaseDate);
+                    editPriceInput.value = trade.purchasePrice;
+                    editQuantityInput.value = trade.quantity;
+                    editSaleDateInput.value = toInputDate(trade.saleDate);
+                    editSalePriceInput.value = trade.salePrice;
+                    openModal(editTradeModal);
+                }
+            });
+            
+            document.body.addEventListener('input', (e) => {
+                if (e.target.classList.contains('notional-price-input')) {
+                    const tradeId = e.target.dataset.id;
+                    const notionalPrice = parseFloat(e.target.value);
+                    const trade = activeTrades.find(t => t.id === tradeId);
+                    const plDisplay = document.querySelector(`.individual-notional-pl[data-id="${tradeId}"]`);
+
+                    if (!notionalPrice || !trade) {
+                        plDisplay.innerHTML = '';
+                        plDisplay.dataset.value = 0;
+                    } else {
+                        const adjustedNotionalPrice = notionalPrice * 0.99;
+                        const pnl = calculatePL(trade.purchasePrice, adjustedNotionalPrice, trade.quantity, trade.tradeType);
+                        plDisplay.innerHTML = `Notional P/L: ${formatIndianCurrency(pnl)}`;
+                        plDisplay.dataset.value = pnl;
+                    }
+                    updateTotalNotionalPL();
+                }
+            });
+
+            concludeConfirmBtn.addEventListener('click', () => {
+                const salePrice = parseFloat(concludePriceInput.value);
+                const saleDate = concludeDateInput.value;
+                if (!salePrice || !saleDate) { alert('Please enter a valid sale price and date.'); return; }
+                
+                const adjustedSalePrice = salePrice * 0.99; // Reduce 1% for costs
+                const tradeIndex = activeTrades.findIndex(t => t.id === selectedTradeId);
+                const trade = activeTrades[tradeIndex];
+
+                const profitLoss = calculatePL(trade.purchasePrice, adjustedSalePrice, trade.quantity, trade.tradeType);
+                
+                historicTrades.push({ ...trade, salePrice: adjustedSalePrice, saleDate: saleDate, profitLoss });
+                activeTrades.splice(tradeIndex, 1);
+                
+                saveData(); render(); closeModal(concludeTradeModal);
+            });
+            
+            editConfirmBtn.addEventListener('click', () => {
+                const tradeIndex = historicTrades.findIndex(t => t.id === selectedTradeId);
+                if(tradeIndex === -1) return;
+
+                const trade = historicTrades[tradeIndex];
+                const newPurchasePrice = parseFloat(editPriceInput.value);
+                const newQuantity = parseInt(editQuantityInput.value);
+                const newSalePrice = parseFloat(editSalePriceInput.value);
+                const newPurchaseDate = editPurchaseDateInput.value;
+                const newSaleDate = editSaleDateInput.value;
+
+                if (!newPurchasePrice || !newQuantity || !newSalePrice || !newPurchaseDate || !newSaleDate) { alert('Please fill all fields correctly.'); return; }
+
+                trade.purchasePrice = newPurchasePrice;
+                trade.quantity = newQuantity;
+                trade.salePrice = newSalePrice;
+                trade.purchaseDate = newPurchaseDate;
+                trade.saleDate = newSaleDate;
+                trade.profitLoss = calculatePL(newPurchasePrice, newSalePrice, newQuantity, trade.tradeType);
+                
+                historicTrades[tradeIndex] = trade;
+                saveData(); render(); closeModal(editTradeModal);
+            });
+
+            // --- EXCEL IMPORT/EXPORT ---
+            importBtn.addEventListener('click', () => importFileInput.click());
+            exportBtn.addEventListener('click', () => {
+                if (historicTrades.length === 0) {
+                    alert("No historic trades to export.");
+                    return;
+                }
+                const ws = XLSX.utils.json_to_sheet(historicTrades);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Trades");
+                XLSX.writeFile(wb, "trades_export.xlsx");
+            });
+
+            importFileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const data = new Uint8Array(event.target.result);
+                        const workbook = XLSX.read(data, {type: 'array', cellDates:true});
+                        const firstSheetName = workbook.SheetNames[0];
+                        const worksheet = workbook.Sheets[firstSheetName];
+                        const json = XLSX.utils.sheet_to_json(worksheet);
+                        
+                        if(json.length > 0) {
+                            const newTrades = json.map(row => {
+                                if (!row.symbol || !row.purchasePrice || !row.quantity || !row.purchaseDate || !row.tradeType || !row.salePrice || !row.saleDate || row.profitLoss === undefined) {
+                                    console.warn("Skipping invalid row:", row);
+                                    return null;
+                                }
+                                return {
+                                    id: `id_${Date.now()}_${Math.random()}`,
+                                    symbol: row.symbol,
+                                    purchasePrice: Number(row.purchasePrice),
+                                    quantity: Number(row.quantity),
+                                    purchaseDate: new Date(row.purchaseDate).toISOString(),
+                                    tradeType: row.tradeType,
+                                    salePrice: Number(row.salePrice),
+                                    saleDate: new Date(row.saleDate).toISOString(),
+                                    profitLoss: Number(row.profitLoss)
+                                };
+                            }).filter(Boolean); // Filter out null (invalid) rows
+
+                            if (newTrades.length > 0) {
+                                historicTrades.push(...newTrades);
+                                saveData();
+                                render();
+                                alert(`${newTrades.length} trades imported successfully!`);
+                            } else {
+                                alert("Import failed. Please check the file format and ensure all columns are present and correctly named.");
+                            }
+                        }
+                    } catch (error) {
+                        console.error("Import error:", error);
+                        alert("Failed to import file. Please ensure it's a valid Excel file with the correct format.");
+                    } finally {
+                        // Reset file input to allow re-uploading the same file
+                        importFileInput.value = '';
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            });
+            
+            // --- Info Tooltip ---
+            infoIcon.addEventListener('mouseenter', () => {
+                infoTooltip.classList.remove('hidden');
+            });
+
+            infoIcon.addEventListener('mouseleave', () => {
+                infoTooltip.classList.add('hidden');
+            });
+
+            // --- INITIALIZATION ---
+            loadData();
+            render();
+        });
+    </script>
+    
+    <!-- PWA Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/service-worker.js')
+                    .then(registration => {
+                        console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                    })
+                    .catch(err => {
+                        console.log('ServiceWorker registration failed: ', err);
+                    });
+            });
+        }
+    </script>
+
+</body>
+</html>
